@@ -30,7 +30,7 @@ public class VJFibonacciTunnel : MonoBehaviour
     public List<Color> backgroundColors = new List<Color> {
         Color.red, new Color(1f, 0.5f, 0f), Color.yellow, Color.green, Color.cyan, Color.blue, Color.magenta
     };
-    public bool fadeColors = true;
+    public bool strobe = false;
     public float backgroundFlashSpeed = 1f;
 
     private List<Material> loadedMaterials = new List<Material>();
@@ -159,15 +159,17 @@ public class VJFibonacciTunnel : MonoBehaviour
     {
         if (backgroundColors.Count == 0) return;
 
-        if (fadeColors)
+        if (strobe)
         {
-            Camera.main.backgroundColor = Color.Lerp(Camera.main.backgroundColor, targetBackgroundColor, Time.deltaTime * backgroundFlashSpeed);
+            Camera.main.backgroundColor = GetNextBackgroundColor();
         }
         else
         {
             Camera.main.backgroundColor = targetBackgroundColor;
         }
     }
+
+    
 
     Color GetNextBackgroundColor()
     {
