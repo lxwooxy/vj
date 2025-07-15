@@ -1,8 +1,6 @@
 using UnityEngine;
-using System.Collections.Generic;
-#if UNITY_EDITOR
 using UnityEditor;
-#endif
+using System.Collections.Generic;
 
 public class VJFibonacciTunnel : MonoBehaviour
 {
@@ -19,26 +17,31 @@ public class VJFibonacciTunnel : MonoBehaviour
     public Vector3 rotationSpeed = new Vector3(15f, 30f, 45f);
     public float bounceSpeed = 1.5f;
     public float bounceHeight = 0.5f;
-
-    [Header("Material Settings")]
     public float sharedMaterialChangeInterval = 2f;
 
     [Header("Beat Sync")]
     public float bpm = 120f;
-    public bool tapBeat = false;
+    public bool markBeat = false;
 
     [Header("Camera")]
     public float spinSpeed = 10f;
-    public float backgroundFlashSpeed = 5f;
+
+    [Header("Background Flash")]
+    public List<Color> backgroundColors = new List<Color> {
+        Color.red, new Color(1f, 0.5f, 0f), Color.yellow, Color.green, Color.cyan, Color.blue, Color.magenta
+    };
+    public bool fadeColors = true;
+    public float backgroundFlashSpeed = 1f;
 
     private List<Material> loadedMaterials = new List<Material>();
     private List<VJEffectUnit> effectUnits = new List<VJEffectUnit>();
     private Camera mainCam;
-    private float materialTimer = 0f;
 
-    private double beatStartTime = 0;
-    private double beatInterval => 60.0 / bpm;
-    private int lastBeatIndex = -1;
+    private float materialTimer = 0f;
+    private float lastBeatTime = 0f;
+    private int currentColorIndex = 0;
+    private Color targetBackgroundColor;
+    private Color lastBackgroundColor;
 
     void Start()
     {
@@ -51,14 +54,34 @@ public class VJFibonacciTunnel : MonoBehaviour
             mainCam.clearFlags = CameraClearFlags.Color;
             mainCam.transform.position = new Vector3(0f, 0f, cameraZ);
         }
+
+        if (backgroundColors.Count > 0)
+        {
+            lastBackgroundColor = backgroundColors[0];
+            targetBackgroundColor = backgroundColors[0];
+        }
     }
 
     void Update()
     {
-        FlashBackground();
         ApplyCameraSpin();
         UpdateMaterialSync();
-        HandleBeatSync();
+        UpdateBackgroundColor();
+
+        float beatInterval = 60f / bpm;
+
+        if (markBeat)
+        {
+            lastBeatTime = Time.time;
+            markBeat = false;
+            TriggerBeat();
+        }
+
+        if (Time.time - lastBeatTime >= beatInterval)
+        {
+            lastBeatTime += beatInterval;
+            TriggerBeat();
+        }
     }
 
     void CreateSpiral()
@@ -80,41 +103,45 @@ public class VJFibonacciTunnel : MonoBehaviour
 
             var effect = obj.AddComponent<VJEffectUnit>();
             effect.Setup(loadedMaterials, pulseSpeed, pulseScale, rotationSpeed, bounceSpeed, bounceHeight);
+
+            // Assign a random material initially
+            if (loadedMaterials.Count > 0)
+            {
+                Material chosen = new Material(loadedMaterials[Random.Range(0, loadedMaterials.Count)]);
+                effect.SetMaterial(chosen);
+            }
+
             effectUnits.Add(effect);
         }
     }
 
-    void HandleBeatSync()
+    void TriggerBeat()
     {
-        if (tapBeat)
+        foreach (var unit in effectUnits)
+            unit.MorphShape();
+
+        // Cycle background color target
+        if (backgroundColors.Count > 0)
         {
-            beatStartTime = Time.timeAsDouble;
-            lastBeatIndex = -1;
-            tapBeat = false;
-        }
-
-        double elapsed = Time.timeAsDouble - beatStartTime;
-        int beatIndex = Mathf.FloorToInt((float)(elapsed / beatInterval));
-
-        if (beatIndex > lastBeatIndex)
-        {
-            foreach (var unit in effectUnits)
-                unit.MorphShape();
-
-            lastBeatIndex = beatIndex;
+            lastBackgroundColor = Camera.main.backgroundColor;
+            targetBackgroundColor = GetNextBackgroundColor();
         }
     }
 
     void UpdateMaterialSync()
     {
         materialTimer += Time.deltaTime;
+
         if (materialTimer >= sharedMaterialChangeInterval)
         {
             materialTimer = 0f;
+
+            if (loadedMaterials.Count == 0) return;
+
             foreach (var unit in effectUnits)
             {
-                int randomIndex = Random.Range(0, loadedMaterials.Count);
-                unit.SetMaterial(new Material(loadedMaterials[randomIndex]));
+                Material chosen = new Material(loadedMaterials[Random.Range(0, loadedMaterials.Count)]);
+                unit.SetMaterial(chosen);
             }
         }
     }
@@ -128,15 +155,30 @@ public class VJFibonacciTunnel : MonoBehaviour
         mainCam.transform.Rotate(Vector3.forward, roll);
     }
 
-    void FlashBackground()
+    void UpdateBackgroundColor()
     {
-        float hue = Mathf.Repeat(Time.time * backgroundFlashSpeed, 1f);
-        Camera.main.backgroundColor = Color.HSVToRGB(hue, 1f, 1f);
+        if (backgroundColors.Count == 0) return;
+
+        if (fadeColors)
+        {
+            Camera.main.backgroundColor = Color.Lerp(Camera.main.backgroundColor, targetBackgroundColor, Time.deltaTime * backgroundFlashSpeed);
+        }
+        else
+        {
+            Camera.main.backgroundColor = targetBackgroundColor;
+        }
+    }
+
+    Color GetNextBackgroundColor()
+    {
+        currentColorIndex = (currentColorIndex + 1) % backgroundColors.Count;
+        return backgroundColors[currentColorIndex];
     }
 
     void LoadAllGeneratedMaterials()
     {
 #if UNITY_EDITOR
+        loadedMaterials.Clear();
         string[] guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets/GeneratedMaterials" });
         foreach (var guid in guids)
         {
