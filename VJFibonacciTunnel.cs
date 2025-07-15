@@ -25,6 +25,7 @@ public class VJFibonacciTunnel : MonoBehaviour
 
     [Header("Camera")]
     public float spinSpeed = 10f;
+    public float strobeSpinMultiplier = 5f;
 
     [Header("Background Flash")]
     public List<Color> backgroundColors = new List<Color> {
@@ -42,6 +43,8 @@ public class VJFibonacciTunnel : MonoBehaviour
     private int currentColorIndex = 0;
     private Color targetBackgroundColor;
     private Color lastBackgroundColor;
+    private bool lastStrobeState = false;
+    private Material whiteMaterial;
 
     void Start()
     {
@@ -60,6 +63,9 @@ public class VJFibonacciTunnel : MonoBehaviour
             lastBackgroundColor = backgroundColors[0];
             targetBackgroundColor = backgroundColors[0];
         }
+
+        whiteMaterial = new Material(Shader.Find("Standard"));
+        whiteMaterial.color = Color.white;
     }
 
     void Update()
@@ -82,6 +88,8 @@ public class VJFibonacciTunnel : MonoBehaviour
             lastBeatTime += beatInterval;
             TriggerBeat();
         }
+
+        HandleStrobeEffect();
     }
 
     void CreateSpiral()
@@ -104,7 +112,6 @@ public class VJFibonacciTunnel : MonoBehaviour
             var effect = obj.AddComponent<VJEffectUnit>();
             effect.Setup(loadedMaterials, pulseSpeed, pulseScale, rotationSpeed, bounceSpeed, bounceHeight);
 
-            // Assign a random material initially
             if (loadedMaterials.Count > 0)
             {
                 Material chosen = new Material(loadedMaterials[Random.Range(0, loadedMaterials.Count)]);
@@ -120,8 +127,7 @@ public class VJFibonacciTunnel : MonoBehaviour
         foreach (var unit in effectUnits)
             unit.MorphShape();
 
-        // Cycle background color target
-        if (backgroundColors.Count > 0)
+        if (backgroundColors.Count > 0 && !strobe)
         {
             lastBackgroundColor = Camera.main.backgroundColor;
             targetBackgroundColor = GetNextBackgroundColor();
@@ -130,8 +136,9 @@ public class VJFibonacciTunnel : MonoBehaviour
 
     void UpdateMaterialSync()
     {
-        materialTimer += Time.deltaTime;
+        if (strobe) return;
 
+        materialTimer += Time.deltaTime;
         if (materialTimer >= sharedMaterialChangeInterval)
         {
             materialTimer = 0f;
@@ -151,7 +158,8 @@ public class VJFibonacciTunnel : MonoBehaviour
         if (!mainCam) return;
 
         mainCam.transform.LookAt(Vector3.zero);
-        float roll = Time.time * spinSpeed;
+        float rollSpeed = spinSpeed * (strobe ? strobeSpinMultiplier : 1f);
+        float roll = Time.time * rollSpeed;
         mainCam.transform.Rotate(Vector3.forward, roll);
     }
 
@@ -169,7 +177,26 @@ public class VJFibonacciTunnel : MonoBehaviour
         }
     }
 
-    
+    void HandleStrobeEffect()
+    {
+        if (strobe != lastStrobeState)
+        {
+            if (strobe)
+            {
+                foreach (var unit in effectUnits)
+                    unit.SetMaterial(whiteMaterial);
+            }
+            else
+            {
+                foreach (var unit in effectUnits)
+                {
+                    Material chosen = new Material(loadedMaterials[Random.Range(0, loadedMaterials.Count)]);
+                    unit.SetMaterial(chosen);
+                }
+            }
+            lastStrobeState = strobe;
+        }
+    }
 
     Color GetNextBackgroundColor()
     {
