@@ -20,7 +20,7 @@ public class VJFibonacciTunnel : MonoBehaviour
     public float sharedMaterialChangeInterval = 2f;
 
     [Header("Beat Sync")]
-    public float bpm = 120f;
+    public float bpm = 60f;
     public bool markBeat = false;
 
     [Header("Camera")]
