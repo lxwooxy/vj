@@ -31,6 +31,14 @@ public class VJFibonacciTunnel : MonoBehaviour
     public List<Color> backgroundColors = new List<Color> {
         Color.red, new Color(1f, 0.5f, 0f), Color.yellow, Color.green, Color.cyan, Color.blue, Color.magenta
     };
+
+    [Header("Fly")]
+    public bool fly = false;
+    public float flyMinZ = 3.9f;
+    public float flyMaxZ = 123.9f;
+    public float flyDuration = 6f; // full back-and-forth time
+    private float flyTimer = 0f;
+
     public bool strobe = false;
     public float backgroundFlashSpeed = 1f;
 
@@ -44,7 +52,9 @@ public class VJFibonacciTunnel : MonoBehaviour
     private Color targetBackgroundColor;
     private Color lastBackgroundColor;
     private bool lastStrobeState = false;
-    private Material whiteMaterial;
+
+    private int strobeWaveOffset = 0;
+    private int waveBlockSize = 10;
 
     void Start()
     {
@@ -63,14 +73,15 @@ public class VJFibonacciTunnel : MonoBehaviour
             lastBackgroundColor = backgroundColors[0];
             targetBackgroundColor = backgroundColors[0];
         }
-
-        whiteMaterial = new Material(Shader.Find("Standard"));
-        whiteMaterial.color = Color.white;
     }
 
     void Update()
     {
-        ApplyCameraSpin();
+        if (fly)
+            UpdateCameraFly();
+        else
+            ApplyCameraSpin();
+
         UpdateMaterialSync();
         UpdateBackgroundColor();
 
@@ -132,6 +143,12 @@ public class VJFibonacciTunnel : MonoBehaviour
             lastBackgroundColor = Camera.main.backgroundColor;
             targetBackgroundColor = GetNextBackgroundColor();
         }
+
+        if (strobe)
+        {
+            strobeWaveOffset = (strobeWaveOffset + 1) % backgroundColors.Count;
+            ApplyStrobeWaveColors();
+        }
     }
 
     void UpdateMaterialSync()
@@ -183,8 +200,7 @@ public class VJFibonacciTunnel : MonoBehaviour
         {
             if (strobe)
             {
-                foreach (var unit in effectUnits)
-                    unit.SetMaterial(whiteMaterial);
+                ApplyStrobeWaveColors();
             }
             else
             {
@@ -198,6 +214,24 @@ public class VJFibonacciTunnel : MonoBehaviour
         }
     }
 
+    void ApplyStrobeWaveColors()
+    {
+        if (loadedMaterials.Count == 0 || backgroundColors.Count == 0)
+            return;
+
+        for (int i = 0; i < effectUnits.Count; i++)
+        {
+            int waveIndex = ((i / waveBlockSize) + strobeWaveOffset) % backgroundColors.Count;
+            Color waveColor = backgroundColors[waveIndex];
+
+            // Find the best match material by color
+            Material bestMatch = FindClosestMaterial(waveColor);
+            if (bestMatch != null)
+                effectUnits[i].SetMaterial(new Material(bestMatch));
+        }
+    }
+
+
     Color GetNextBackgroundColor()
     {
         currentColorIndex = (currentColorIndex + 1) % backgroundColors.Count;
@@ -207,14 +241,58 @@ public class VJFibonacciTunnel : MonoBehaviour
     void LoadAllGeneratedMaterials()
     {
 #if UNITY_EDITOR
-        loadedMaterials.Clear();
-        string[] guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets/GeneratedMaterials" });
-        foreach (var guid in guids)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (mat != null) loadedMaterials.Add(mat);
-        }
+                loadedMaterials.Clear();
+                string[] guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets/GeneratedMaterials" });
+                foreach (var guid in guids)
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    if (mat != null) loadedMaterials.Add(mat);
+                }
 #endif
     }
+    Material FindClosestMaterial(Color target)
+    {
+        Material best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var mat in loadedMaterials)
+        {
+            if (!mat.HasProperty("_Color")) continue;
+
+            Color matColor = mat.color;
+            float dist =
+            Mathf.Pow(target.r - matColor.r, 2) +
+            Mathf.Pow(target.g - matColor.g, 2) +
+            Mathf.Pow(target.b - matColor.b, 2);
+
+            if (dist < bestDist)
+            {
+                best = mat;
+                bestDist = dist;
+            }
+        }
+
+        return best;
+    }
+    void UpdateCameraFly()
+    {
+        if (!mainCam) return;
+
+        flyTimer += Time.deltaTime;
+
+        float t = Mathf.PingPong(flyTimer / (flyDuration / 2f), 1f); // 0 → 1 → 0
+        float easedT = Mathf.SmoothStep(0f, 1f, t); // ease at both ends
+        float z = Mathf.Lerp(flyMinZ, flyMaxZ, easedT);
+
+        mainCam.transform.position = new Vector3(0f, 0f, z);
+        mainCam.transform.LookAt(Vector3.zero);
+
+        float rollSpeed = spinSpeed * (strobe ? strobeSpinMultiplier : 1f);
+        float roll = Time.time * rollSpeed;
+        mainCam.transform.Rotate(Vector3.forward, roll);
+    }
+
+
+
 }
